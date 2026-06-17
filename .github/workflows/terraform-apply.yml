@@ -1,0 +1,74 @@
+name: 'Terraform Apply'
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+
+env:
+  WORKING_DIR: terraform
+  ARM_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
+jobs:
+  terraform-apply:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, stg, prod]
+      max-parallel: 1
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init (${{ matrix.environment }})
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          terraform init -input=false
+        env:
+          ARM_USE_CLI: true
+
+      - name: Terraform Plan (${{ matrix.environment }})
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          terraform plan \
+            -var-file="${{ matrix.environment }}-terraform.tfvars" \
+            -out=tfplan-${{ matrix.environment }}
+        env:
+          ARM_USE_CLI: true
+
+      - name: Terraform Apply (${{ matrix.environment }})
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          terraform apply -input=false tfplan-${{ matrix.environment }}
+        env:
+          ARM_USE_CLI: true
+
+      - name: Export Outputs
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          terraform output -json > ../outputs-${{ matrix.environment }}.json
+        env:
+          ARM_USE_CLI: true
+
+      - name: Upload Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs-${{ matrix.environment }}
+          path: outputs-${{ matrix.environment }}.json
+          retention-days: 30
+
+      - name: Create Deployment Summary
+        run: |
+          echo "## Terraform Apply - ${{ matrix.environment }} ✅" >> $GITHUB_STEP_SUMMARY
+          echo "Deployment completed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** \`${{ matrix.environment }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date)" >> $GITHUB_STEP_SUMMARY
