@@ -17,17 +17,17 @@ resource "azurerm_storage_account" "resume" {
   account_kind             = "StorageV2"
   min_tls_version          = "TLS1_2"
 
-  # The $web container needs anonymous read access so visitors can
-  # actually fetch the site's files.
   allow_nested_items_to_be_public = true
-
-  static_website {
-    index_document     = "index.html"
-    error_404_document = "404.html"
-  }
 
   tags = {
     Environment = var.environment
     ManagedBy   = "Terraform"
   }
+}
+
+# New: Use the dedicated static website resource
+resource "azurerm_storage_account_static_website" "resume" {
+  storage_account_id = azurerm_storage_account.resume.id
+  index_document     = "index.html"
+  error_404_document = "404.html"
 }

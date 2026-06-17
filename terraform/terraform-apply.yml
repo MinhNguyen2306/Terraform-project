@@ -7,24 +7,26 @@ on:
     paths:
       - 'terraform/**'
 
-env:
-  WORKING_DIR: terraform
-  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-
 jobs:
   terraform-apply:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         environment: [dev, stg, prod]
-      max-parallel: 1  # Apply environments sequentially
-    
+      max-parallel: 1
+
+    defaults:
+      run:
+        working-directory: terraform
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -32,26 +34,19 @@ jobs:
           terraform_version: 1.5.0
 
       - name: Terraform Init (${{ matrix.environment }})
-        run: |
-          cd ${{ env.WORKING_DIR }}
-          terraform init -input=false
+        run: terraform init -input=false
 
       - name: Terraform Plan (${{ matrix.environment }})
         run: |
-          cd ${{ env.WORKING_DIR }}
           terraform plan \
             -var-file="${{ matrix.environment }}-terraform.tfvars" \
             -out=tfplan-${{ matrix.environment }}
 
       - name: Terraform Apply (${{ matrix.environment }})
-        run: |
-          cd ${{ env.WORKING_DIR }}
-          terraform apply -input=false tfplan-${{ matrix.environment }}
+        run: terraform apply -input=false tfplan-${{ matrix.environment }}
 
       - name: Export Outputs
-        run: |
-          cd ${{ env.WORKING_DIR }}
-          terraform output -json > ../outputs-${{ matrix.environment }}.json
+        run: terraform output -json > ../outputs-${{ matrix.environment }}.json
 
       - name: Upload Outputs
         uses: actions/upload-artifact@v4

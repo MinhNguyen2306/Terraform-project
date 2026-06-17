@@ -6,13 +6,6 @@ on:
       - 'terraform/**'
       - '.github/workflows/terraform-plan.yml'
 
-env:
-  WORKING_DIR: terraform
-  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-
 jobs:
   terraform-plan:
     runs-on: ubuntu-latest
@@ -20,9 +13,18 @@ jobs:
       matrix:
         environment: [dev, stg, prod]
     
+    defaults:
+      run:
+        working-directory: terraform
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -30,37 +32,31 @@ jobs:
           terraform_version: 1.5.0
 
       - name: Terraform Format Check
-        run: terraform fmt -check -recursive ${{ env.WORKING_DIR }}
+        run: terraform fmt -check -recursive .
         continue-on-error: true
 
       - name: Terraform Init (${{ matrix.environment }})
-        run: |
-          cd ${{ env.WORKING_DIR }}
-          terraform init -input=false
+        run: terraform init -input=false
 
       - name: Terraform Validate
-        run: |
-          cd ${{ env.WORKING_DIR }}
-          terraform validate
+        run: terraform validate
 
       - name: Terraform Plan (${{ matrix.environment }})
         run: |
-          cd ${{ env.WORKING_DIR }}
           terraform plan \
             -var-file="${{ matrix.environment }}-terraform.tfvars" \
             -out=tfplan-${{ matrix.environment }}
 
-      - name: Comment PR with Plan
+      - name: Comment PR with Plan Status
+        if: always()
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const planFile = 'tfplan-${{ matrix.environment }}';
-            const message = `## Terraform Plan - ${{ matrix.environment }}
+            const message = `## Terraform Plan - ${{ matrix.environment }} ✅
             
-            Plan file: \`${{ matrix.environment }}-terraform.tfvars\`
+            **Environment:** \`${{ matrix.environment }}\`
             
-            Workflow: [Link](${context.payload.pull_request.html_url}/checks)`;
+            Plan completed. Review the logs above for changes.`;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
