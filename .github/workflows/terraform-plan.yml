@@ -6,10 +6,6 @@ on:
       - 'terraform/**'
       - '.github/workflows/terraform-plan.yml'
 
-env:
-  WORKING_DIR: terraform
-  ARM_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
-
 jobs:
   terraform-plan:
     runs-on: ubuntu-latest
@@ -17,6 +13,13 @@ jobs:
       matrix:
         environment: [dev, stg, prod]
     
+    defaults:
+      run:
+        working-directory: terraform
+
+    env:
+      ARM_USE_CLI: true
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,31 +30,20 @@ jobs:
           terraform_version: 1.5.0
 
       - name: Terraform Format Check
-        run: terraform fmt -check -recursive ${{ env.WORKING_DIR }}
+        run: terraform fmt -check -recursive .
         continue-on-error: true
 
       - name: Terraform Init (${{ matrix.environment }})
-        run: |
-          cd ${{ env.WORKING_DIR }}
-          terraform init -input=false
-        env:
-          ARM_USE_CLI: true
+        run: terraform init -input=false
 
       - name: Terraform Validate
-        run: |
-          cd ${{ env.WORKING_DIR }}
-          terraform validate
-        env:
-          ARM_USE_CLI: true
+        run: terraform validate
 
       - name: Terraform Plan (${{ matrix.environment }})
         run: |
-          cd ${{ env.WORKING_DIR }}
           terraform plan \
             -var-file="${{ matrix.environment }}-terraform.tfvars" \
             -out=tfplan-${{ matrix.environment }}
-        env:
-          ARM_USE_CLI: true
 
       - name: Comment PR with Plan Status
         if: always()
